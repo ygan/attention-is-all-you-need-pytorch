@@ -31,6 +31,7 @@ def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
 
     return torch.FloatTensor(sinusoid_table)
 
+
 def get_attn_key_pad_mask(seq_k, seq_q):
     ''' For masking out the padding part of key sequence. '''
 
@@ -51,9 +52,16 @@ def get_subsequent_mask(seq):
 
     return subsequent_mask
 
+
 class Encoder(nn.Module):
     ''' A encoder model with self attention mechanism. '''
 
+    # opt.src_vocab_size = n_src_vocab, number of src vocab
+    # len_max_seq is the max length of the seq
+    # d_word_vec is 512
+    # n_layers = 6 is the layer number of the EncoderLayer
+    # n_head = 8.
+    # d_k=64, d_v=64, d_model=512, d_inner=2048, dropout=0.1,
     def __init__(
             self,
             n_src_vocab, len_max_seq, d_word_vec,
@@ -62,14 +70,19 @@ class Encoder(nn.Module):
 
         super().__init__()
 
-        n_position = len_max_seq + 1
+        n_position = len_max_seq + 1 # number of position. 
 
+        # normal embeding, input is word number from vocab; output is vector of word
         self.src_word_emb = nn.Embedding(
             n_src_vocab, d_word_vec, padding_idx=Constants.PAD)
 
+        # get_sinusoid_encoding_table(n_position, d_word_vec, padding_idx=0) is FloatTensor containing weights for the Embedding.
+        # freeze (boolean, optional): If ``True``, the tensor does not get updated in the learning process.
+        # Input of this embeding is position (very short compared to word length), output is a vector as same dimension as src_word_emb
         self.position_enc = nn.Embedding.from_pretrained(
             get_sinusoid_encoding_table(n_position, d_word_vec, padding_idx=0),
             freeze=True)
+
 
         self.layer_stack = nn.ModuleList([
             EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
@@ -80,11 +93,12 @@ class Encoder(nn.Module):
         enc_slf_attn_list = []
 
         # -- Prepare masks
-        slf_attn_mask = get_attn_key_pad_mask(seq_k=src_seq, seq_q=src_seq)
-        non_pad_mask = get_non_pad_mask(src_seq)
+        slf_attn_mask = get_attn_key_pad_mask(seq_k=src_seq, seq_q=src_seq) # pad to 1, other to 0
+        non_pad_mask = get_non_pad_mask(src_seq)     # pad to 0, other to 1, non pad means pad to 0.
+
 
         # -- Forward
-        enc_output = self.src_word_emb(src_seq) + self.position_enc(src_pos)
+        enc_output = self.src_word_emb(src_seq) + self.position_enc(src_pos) #plus not cat. shape: (batch * seq_len * 512)
 
         for enc_layer in self.layer_stack:
             enc_output, enc_slf_attn = enc_layer(
@@ -108,7 +122,7 @@ class Decoder(nn.Module):
             d_model, d_inner, dropout=0.1):
 
         super().__init__()
-        n_position = len_max_seq + 1
+        n_position = len_max_seq + 1   # value 0  means pad token. So we need one more token than the real length
 
         self.tgt_word_emb = nn.Embedding(
             n_tgt_vocab, d_word_vec, padding_idx=Constants.PAD)
@@ -155,6 +169,8 @@ class Decoder(nn.Module):
 class Transformer(nn.Module):
     ''' A sequence to sequence model with attention mechanism. '''
 
+    # opt.src_vocab_size = n_src_vocab, number of src vocab
+    # opt.d_inner_hid = d_inner,???
     def __init__(
             self,
             n_src_vocab, n_tgt_vocab, len_max_seq,

@@ -9,6 +9,9 @@ __author__ = "Yu-Hsiang Huang"
 class MultiHeadAttention(nn.Module):
     ''' Multi-Head Attention module '''
 
+    # d_model is 512 which is the dimension of the model
+    # n_head = 8. This is the number of head. So "Multi" head is defined by n_head.
+    # d_k=64, d_v=64, dropout=0.1,
     def __init__(self, n_head, d_model, d_k, d_v, dropout=0.1):
         super().__init__()
 
@@ -16,9 +19,10 @@ class MultiHeadAttention(nn.Module):
         self.d_k = d_k
         self.d_v = d_v
 
-        self.w_qs = nn.Linear(d_model, n_head * d_k)
-        self.w_ks = nn.Linear(d_model, n_head * d_k)
+        self.w_qs = nn.Linear(d_model, n_head * d_k)  # here means n_head nn.Linear(d_model, d_k).
+        self.w_ks = nn.Linear(d_model, n_head * d_k)  # because we can split the matrix
         self.w_vs = nn.Linear(d_model, n_head * d_v)
+
         nn.init.normal_(self.w_qs.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_k)))
         nn.init.normal_(self.w_ks.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_k)))
         nn.init.normal_(self.w_vs.weight, mean=0, std=np.sqrt(2.0 / (d_model + d_v)))
@@ -32,6 +36,8 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
+    # q = k = v. they all are enc_input come from embedding or last EncoderLayer. (batch * seq_len * 512)
+    # mask is slf_attn_mask,pad to 1, other to 0
     def forward(self, q, k, v, mask=None):
 
         d_k, d_v, n_head = self.d_k, self.d_v, self.n_head
@@ -42,11 +48,11 @@ class MultiHeadAttention(nn.Module):
 
         residual = q
 
-        q = self.w_qs(q).view(sz_b, len_q, n_head, d_k)
+        q = self.w_qs(q).view(sz_b, len_q, n_head, d_k) # batch * seq_len * n_head * dimension_k(64):
         k = self.w_ks(k).view(sz_b, len_k, n_head, d_k)
         v = self.w_vs(v).view(sz_b, len_v, n_head, d_v)
 
-        q = q.permute(2, 0, 1, 3).contiguous().view(-1, len_q, d_k) # (n*b) x lq x dk
+        q = q.permute(2, 0, 1, 3).contiguous().view(-1, len_q, d_k) # (n*b) x lq x dk = shape: (batch * num_head , seq_len , dimension_k)
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, len_k, d_k) # (n*b) x lk x dk
         v = v.permute(2, 0, 1, 3).contiguous().view(-1, len_v, d_v) # (n*b) x lv x dv
 
@@ -54,12 +60,15 @@ class MultiHeadAttention(nn.Module):
         output, attn = self.attention(q, k, v, mask=mask)
 
         output = output.view(n_head, sz_b, len_q, d_v)
+
+        # This is the "Concat" action in Figure 2 of the paper:
         output = output.permute(1, 2, 0, 3).contiguous().view(sz_b, len_q, -1) # b x lq x (n*dv)
 
         output = self.dropout(self.fc(output))
         output = self.layer_norm(output + residual)
 
         return output, attn
+
 
 class PositionwiseFeedForward(nn.Module):
     ''' A two-feed-forward-layer module '''

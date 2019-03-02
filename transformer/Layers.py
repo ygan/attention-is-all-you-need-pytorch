@@ -8,19 +8,31 @@ __author__ = "Yu-Hsiang Huang"
 class EncoderLayer(nn.Module):
     ''' Compose with two layers '''
 
+    # d_model is 512 which is the dimension of the model
+    # d_inner is 2048 which is the dimension of the input
+    # n_head = 8.
+    # d_k=64, d_v=64, dropout=0.1,
     def __init__(self, d_model, d_inner, n_head, d_k, d_v, dropout=0.1):
         super(EncoderLayer, self).__init__()
+
         self.slf_attn = MultiHeadAttention(
             n_head, d_model, d_k, d_v, dropout=dropout)
+
         self.pos_ffn = PositionwiseFeedForward(d_model, d_inner, dropout=dropout)
 
+
+    # enc_input come from embedding or last EncoderLayer. (batch * seq_len * 512)
+    # non_pad_mask, pad to 0, other to 1, non pad means pad to 0.
+    # slf_attn_mask,pad to 1, other to 0
     def forward(self, enc_input, non_pad_mask=None, slf_attn_mask=None):
+
         enc_output, enc_slf_attn = self.slf_attn(
             enc_input, enc_input, enc_input, mask=slf_attn_mask)
-        enc_output *= non_pad_mask
+
+        enc_output *= non_pad_mask # delete pad value.
 
         enc_output = self.pos_ffn(enc_output)
-        enc_output *= non_pad_mask
+        enc_output *= non_pad_mask # delete pad value.
 
         return enc_output, enc_slf_attn
 
